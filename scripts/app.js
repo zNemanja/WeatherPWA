@@ -54,7 +54,7 @@
       app.selectedCities = [];
     }
     app.getForecast(key, label);
-    app.selectedCities.push({key: key, label: label});
+    app.selectedCities.push({key: key, label: label, degree: "f"});
     app.saveSelectedCities();
     app.toggleAddDialog(false);
   });
@@ -65,22 +65,35 @@
   });
 
   document.addEventListener('click',function(e) {
-    if(e.target && e.target.parentElement.id.indexOf("hyperlink") == 0) {
-      var temperatureParentTag = e.target.parentElement.parentElement;
+    if(e.target && e.target.parentElement.id.indexOf("hyperlinkTemperature") == 0) {
+      var cityParentTag = e.target.parentElement.parentElement.parentElement.parentElement.parentElement;
+      
+      var cityName = cityParentTag.querySelector('.location').innerText;
+      
+      //Change degree value and update the city forecast
+      app.selectedCities.forEach(function(city) {
+        if(city.label == cityName) {
+          city.degree = e.target.innerText.slice(-1).toLowerCase();
+          app.saveSelectedCities();
 
+          app.getForecast(city.key, city.label, city.degree);
+          return;
+        }
+      });
+      
       if(e.target.innerText == "°C") {
-        temperatureParentTag.querySelector("#hyperlinkCelsius").style.display = "none";
-        temperatureParentTag.querySelector("#spanCelsius").style.display =  "inline-block";
+        cityParentTag.querySelector("#hyperlinkTemperatureCelsius").style.display = "none";
+        cityParentTag.querySelector("#spanTemperatureCelsius").style.display =  "inline-block";
 
-        temperatureParentTag.querySelector("#hyperlinkFahrenheit").style.display = "inline-block";
-        temperatureParentTag.querySelector("#spanFahrenheit").style.display =  "none";
+        cityParentTag.querySelector("#hyperlinkTemperatureFahrenheit").style.display = "inline-block";
+        cityParentTag.querySelector("#spanTemperatureFahrenheit").style.display =  "none";
       }
       else if(e.target.innerText == "°F") {
-        temperatureParentTag.querySelector("#hyperlinkCelsius").style.display = "inline-block";
-        temperatureParentTag.querySelector("#spanCelsius").style.display =  "none";
+        cityParentTag.querySelector("#hyperlinkTemperatureCelsius").style.display = "inline-block";
+        cityParentTag.querySelector("#spanTemperatureCelsius").style.display =  "none";
 
-        temperatureParentTag.querySelector("#hyperlinkFahrenheit").style.display = "none";
-        temperatureParentTag.querySelector("#spanFahrenheit").style.display =  "inline-block";
+        cityParentTag.querySelector("#hyperlinkTemperatureFahrenheit").style.display = "none";
+        cityParentTag.querySelector("#spanTemperatureFahrenheit").style.display =  "inline-block";
       }
     }
   });
@@ -110,6 +123,23 @@
     var humidity = data.channel.atmosphere.humidity;
     var wind = data.channel.wind;
 
+    var temperatureUnit;
+    var windUnitSpeed;
+    try {
+      temperatureUnit = data.channel.units.temperature;
+      windUnitSpeed = data.channel.units.speed;
+    }
+    catch(err) {
+      app.selectedCities.forEach(function(city) {
+        if(city.key == data.key) {
+          temperatureUnit = city.degree.toUpperCase();
+          windUnitSpeed = temperatureUnit == "C" ? "km/h" : "mph";
+          return;
+        }
+      });
+      console.log(err.message);
+    }
+
     var card = app.visibleCards[data.key];
     if (!card) {
       card = app.cardTemplate.cloneNode(true);
@@ -118,6 +148,15 @@
       card.removeAttribute('hidden');
       app.container.appendChild(card);
       app.visibleCards[data.key] = card;
+      
+      if(temperatureUnit == "C") {
+        card.querySelector('#spanTemperatureCelsius').style.display =  "inline-block"
+        card.querySelector("#hyperlinkTemperatureFahrenheit").style.display = "inline-block";
+      }
+      else if(temperatureUnit == "F") {
+        card.querySelector("#hyperlinkTemperatureCelsius").style.display = "inline-block";
+        card.querySelector("#spanTemperatureFahrenheit").style.display =  "inline-block";
+      }
     }
 
     // Verifies the data provide is newer than what's already visible
@@ -133,7 +172,7 @@
       }
     }
     cardLastUpdatedElem.textContent = data.created;
-
+    
     card.querySelector('.description').textContent = current.text;
     card.querySelector('.date').textContent = current.date;
     card.querySelector('.current .icon').classList.add(app.getIconClass(current.code));
@@ -144,7 +183,7 @@
     card.querySelector('.current .humidity').textContent =
       Math.round(humidity) + '%';
     card.querySelector('.current .wind .value').textContent =
-      Math.round(wind.speed);
+      Math.round(wind.speed) + " " + windUnitSpeed;
     card.querySelector('.current .wind .direction').textContent = wind.direction;
     var nextDays = card.querySelectorAll('.future .oneday');
     var today = new Date();
@@ -184,8 +223,8 @@
    * request goes through, then the card gets updated a second time with the
    * freshest data.
    */
-  app.getForecast = function(key, label) {
-    var statement = 'select * from weather.forecast where woeid=' + key + " and u='c'";
+  app.getForecast = function(key, label, degree = "f") {
+    var statement = "select * from weather.forecast where woeid=" + key + " and u='" +degree +"'";
     var url = 'https://query.yahooapis.com/v1/public/yql?format=json&q=' +
         statement;
     // TODO add cache logic here
@@ -366,7 +405,7 @@
   if (app.selectedCities) {
     app.selectedCities = JSON.parse(app.selectedCities);
     app.selectedCities.forEach(function(city) {
-      app.getForecast(city.key, city.label);
+      app.getForecast(city.key, city.label, city.degree);
     });
   } else {
     /* The user is using the app for the first time, or the user has not
@@ -374,11 +413,12 @@
      * scenario could guess the user's location via IP lookup and then inject
      * that data into the page.
      */
-    app.updateForecastCard(initialWeatherForecast);
     app.selectedCities = [
-      {key: initialWeatherForecast.key, label: initialWeatherForecast.label}
+      {key: initialWeatherForecast.key, label: initialWeatherForecast.label, degree: "f"}
     ];
     app.saveSelectedCities();
+    
+    app.updateForecastCard(initialWeatherForecast);
   }
 
   // TODO add service worker code here
